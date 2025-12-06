@@ -11,6 +11,7 @@ from .llm import get_llm_client, LLMClient
 from .search import SearchAgent, EventSearchAgent, SearchResult
 from .scraper import ScraperAgent, ScrapedEvent
 from .database import get_database, DatabaseClient
+from .ivor_sync import IVORSync
 
 import sys
 sys.path.append("..")
@@ -313,6 +314,7 @@ class PlanningAgent:
         self.news_agent = NewsResearchAgent()
         self.events_agent = EventsDiscoveryAgent()
         self.db = get_database()
+        self.ivor_sync = IVORSync()
 
     async def run_daily_discovery(self) -> Dict[str, Any]:
         """Run daily news and events discovery"""
@@ -322,6 +324,7 @@ class PlanningAgent:
             "timestamp": datetime.utcnow().isoformat(),
             "news": {},
             "events": {},
+            "ivor_sync": {},
             "errors": [],
         }
 
@@ -339,6 +342,15 @@ class PlanningAgent:
             results["errors"].append(f"Events discovery failed: {str(e)}")
             print(f"[PlanningAgent] Events error: {e}")
 
+        # Sync to IVOR intelligence - keeps IVOR informed of discoveries
+        try:
+            print("[PlanningAgent] Syncing discoveries to IVOR...")
+            results["ivor_sync"] = await self.ivor_sync.sync_daily_discoveries(results)
+            print(f"[PlanningAgent] IVOR sync complete: {results['ivor_sync']}")
+        except Exception as e:
+            results["errors"].append(f"IVOR sync failed: {str(e)}")
+            print(f"[PlanningAgent] IVOR sync error: {e}")
+
         print(f"[PlanningAgent] Daily discovery complete: {results}")
         return results
 
@@ -349,6 +361,7 @@ class PlanningAgent:
         results = {
             "timestamp": datetime.utcnow().isoformat(),
             "news": {},
+            "ivor_sync": {},
             "errors": [],
         }
 
@@ -356,5 +369,11 @@ class PlanningAgent:
             results["news"] = await self.news_agent.research_and_save(time_range="m")
         except Exception as e:
             results["errors"].append(f"Deep research failed: {str(e)}")
+
+        # Sync to IVOR after deep research too
+        try:
+            results["ivor_sync"] = await self.ivor_sync.sync_daily_discoveries(results)
+        except Exception as e:
+            results["errors"].append(f"IVOR sync failed: {str(e)}")
 
         return results
