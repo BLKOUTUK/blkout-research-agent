@@ -27,7 +27,7 @@ In Coolify application settings → **Environment Variables**:
 
 ```
 GROQ_API_KEY=gsk_your_key_here
-SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_URL=https://bgjengudzfickgomjqmz.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=eyJ...
 MAX_SEARCH_RESULTS=10
 RELEVANCE_THRESHOLD=70
