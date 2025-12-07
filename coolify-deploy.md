@@ -31,9 +31,15 @@ SUPABASE_URL=https://bgjengudzfickgomjqmz.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=eyJ...
 MAX_SEARCH_RESULTS=10
 RELEVANCE_THRESHOLD=70
+
+# Email Notifications (Resend)
+RESEND_API_KEY=re_hvi5M6rs_3LxqxEqJoKsaUbzXfGyfNQvH
+NOTIFICATION_FROM_EMAIL=research@blkoutuk.com
+NOTIFICATION_TO_EMAIL=hello@blkoutuk.com
 ```
 
 **Get your Groq API key free:** https://console.groq.com
+**Resend dashboard:** https://resend.com
 
 ### 4. Deploy
 
@@ -47,6 +53,8 @@ Check logs in Coolify to see:
   - Daily News & Events Discovery: cron[hour='6', minute='0']
   - Evening Events Check: cron[hour='18', minute='0']
   - Weekly Deep Research: cron[day_of_week='sun', hour='3', minute='0']
+  - Weekly Grant Research: cron[day_of_week='mon', hour='9', minute='0']
+  - Mid-week Grant Research: cron[day_of_week='wed', hour='14', minute='0']
 [Scheduler] Started
 ```
 
@@ -61,6 +69,11 @@ python main.py --run-now daily
 Or for events only:
 ```bash
 python main.py --run-now events
+```
+
+Or for grant research:
+```bash
+python main.py --run-now grants
 ```
 
 ## Database Setup
@@ -190,16 +203,28 @@ Coolify Container
 ├── Scheduler (APScheduler)
 │   ├── 6 AM: Daily Discovery
 │   ├── 6 PM: Events Check
-│   └── Sunday 3 AM: Deep Research
+│   ├── Sunday 3 AM: Deep Research
+│   ├── Monday 9 AM: Grant Research
+│   └── Wednesday 2 PM: Grant Research
 │
 ├── News Agent
 │   ├── DuckDuckGo Search (free)
 │   ├── Groq LLM Analysis (free)
 │   └── Supabase Insert
 │
-└── Events Agent
-    ├── Web Search
-    ├── Playwright Scraping
-    ├── LLM Extraction
-    └── Supabase Insert
+├── Events Agent
+│   ├── Web Search
+│   ├── Playwright Scraping
+│   ├── LLM Extraction
+│   └── Supabase Insert
+│
+├── Grants Agent
+│   ├── Multi-query Search (50+ UK funders)
+│   ├── Keyword Relevance Filtering
+│   ├── LLM Fit Analysis
+│   └── Supabase Insert
+│
+└── Email Notifier (Resend)
+    ├── New discoveries digest
+    └── Top 10 priority opportunities
 ```
