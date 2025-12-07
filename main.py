@@ -91,7 +91,7 @@ async def run_daemon():
     print("  - Daily discovery: 6:00 AM London time")
     print("  - Evening events: 6:00 PM London time")
     print("  - Weekly deep research: Sunday 3:00 AM")
-    print("  - Weekly grant research: Monday 9:00 AM")
+    print("  - Grant research: Monday 9:00 AM, Wednesday 2:00 PM")
     print("\nPress Ctrl+C to stop.")
     print("=" * 60)
 

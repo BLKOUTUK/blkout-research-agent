@@ -59,6 +59,15 @@ class DiscoveryScheduler:
             replace_existing=True,
         )
 
+        # Mid-week grant research on Wednesday at 2 PM
+        self.scheduler.add_job(
+            self._run_grants,
+            CronTrigger(day_of_week="wed", hour=14, minute=0),
+            id="midweek_grants",
+            name="Mid-week Grant Research",
+            replace_existing=True,
+        )
+
         print("[Scheduler] Jobs configured:")
         for job in self.scheduler.get_jobs():
             print(f"  - {job.name}: {job.trigger}")
