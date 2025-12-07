@@ -9,6 +9,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from .agents import PlanningAgent
+from .grants_agent import GrantPlanningAgent
 
 
 class DiscoveryScheduler:
@@ -17,6 +18,7 @@ class DiscoveryScheduler:
     def __init__(self):
         self.scheduler = AsyncIOScheduler(timezone="Europe/London")
         self.agent = PlanningAgent()
+        self.grants_agent = GrantPlanningAgent()
 
     def setup_schedules(self):
         """Configure all scheduled jobs"""
@@ -45,6 +47,15 @@ class DiscoveryScheduler:
             CronTrigger(day_of_week="sun", hour=3, minute=0),
             id="weekly_deep_research",
             name="Weekly Deep Research",
+            replace_existing=True,
+        )
+
+        # Weekly grant research on Monday at 9 AM
+        self.scheduler.add_job(
+            self._run_grants,
+            CronTrigger(day_of_week="mon", hour=9, minute=0),
+            id="weekly_grants",
+            name="Weekly Grant Research",
             replace_existing=True,
         )
 
@@ -79,6 +90,15 @@ class DiscoveryScheduler:
         except Exception as e:
             print(f"[Scheduler] Weekly research error: {e}")
 
+    async def _run_grants(self):
+        """Execute weekly grant research"""
+        print(f"[Scheduler] Running grant research at {datetime.now()}")
+        try:
+            results = await self.grants_agent.run_weekly_research()
+            print(f"[Scheduler] Grants results: {results}")
+        except Exception as e:
+            print(f"[Scheduler] Grant research error: {e}")
+
     def start(self):
         """Start the scheduler"""
         self.setup_schedules()
@@ -98,6 +118,8 @@ class DiscoveryScheduler:
             await self._run_events_only()
         elif job_type == "weekly":
             await self._run_weekly()
+        elif job_type == "grants":
+            await self._run_grants()
         else:
             print(f"Unknown job type: {job_type}")
 

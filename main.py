@@ -7,6 +7,7 @@ Usage:
     python main.py --run-now daily    # Run daily discovery immediately
     python main.py --run-now events   # Run events discovery immediately
     python main.py --run-now weekly   # Run weekly deep research immediately
+    python main.py --run-now grants   # Run grant research immediately
     python main.py --test             # Test mode (no database writes)
 """
 
@@ -90,6 +91,7 @@ async def run_daemon():
     print("  - Daily discovery: 6:00 AM London time")
     print("  - Evening events: 6:00 PM London time")
     print("  - Weekly deep research: Sunday 3:00 AM")
+    print("  - Weekly grant research: Monday 9:00 AM")
     print("\nPress Ctrl+C to stop.")
     print("=" * 60)
 
@@ -100,7 +102,7 @@ def main():
     parser = argparse.ArgumentParser(description="BLKOUT Research Agent")
     parser.add_argument(
         "--run-now",
-        choices=["daily", "events", "weekly"],
+        choices=["daily", "events", "weekly", "grants"],
         help="Run a specific job immediately",
     )
     parser.add_argument(
