@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 from .llm import get_llm_client
 from .search import SearchAgent
 from .database import get_database
+from .notifications import get_notifier
 
 import sys
 sys.path.append("..")
@@ -305,6 +306,7 @@ class GrantPlanningAgent:
     def __init__(self):
         self.grant_agent = GrantResearchAgent()
         self.db = get_database()
+        self.notifier = get_notifier()
 
     async def run_weekly_research(self) -> Dict[str, Any]:
         """Run weekly grant opportunity research"""
@@ -318,12 +320,64 @@ class GrantPlanningAgent:
 
         try:
             results["grants"] = await self.grant_agent.research_and_save(time_range="m")
+
+            # Send email notification with new grants and top priorities
+            await self._send_digest_email(results["grants"])
+
         except Exception as e:
             results["errors"].append(f"Grant research failed: {str(e)}")
             print(f"[GrantPlanning] Error: {e}")
 
         print(f"[GrantPlanning] Research complete: {results}")
         return results
+
+    async def _send_digest_email(self, run_stats: Dict[str, Any]) -> None:
+        """Send email digest with new discoveries and top priorities"""
+        try:
+            # Get newly discovered grants (last 24 hours, high relevance)
+            new_grants = await self._get_recent_discoveries()
+
+            # Get top 10 priority grants overall
+            top_priority = await self._get_top_priority_grants()
+
+            # Send digest
+            await self.notifier.send_grants_digest(
+                new_grants=new_grants,
+                top_priority=top_priority,
+                run_stats=run_stats,
+            )
+        except Exception as e:
+            print(f"[GrantPlanning] Email notification error: {e}")
+
+    async def _get_recent_discoveries(self) -> list:
+        """Get grants discovered in the last run"""
+        try:
+            response = self.db.client.table("grants")\
+                .select("title, funder_name, application_url, deadline_date, fit_score, funder_advice, priority, notes")\
+                .eq("status", "researching")\
+                .gte("fit_score", 60)\
+                .order("created_at", desc=True)\
+                .limit(20)\
+                .execute()
+            return response.data if response.data else []
+        except Exception as e:
+            print(f"[GrantPlanning] Error fetching recent grants: {e}")
+            return []
+
+    async def _get_top_priority_grants(self) -> list:
+        """Get top 10 highest priority grant opportunities"""
+        try:
+            response = self.db.client.table("grants")\
+                .select("title, funder_name, application_url, deadline_date, fit_score, funder_advice, priority")\
+                .neq("status", "declined")\
+                .neq("status", "submitted")\
+                .order("fit_score", desc=True)\
+                .limit(10)\
+                .execute()
+            return response.data if response.data else []
+        except Exception as e:
+            print(f"[GrantPlanning] Error fetching top priority grants: {e}")
+            return []
 
     async def run_deadline_check(self) -> Dict[str, Any]:
         """Check for upcoming grant deadlines"""
