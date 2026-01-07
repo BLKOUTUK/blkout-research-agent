@@ -49,4 +49,5 @@ HEALTHCHECK --interval=60s --timeout=10s --start-period=30s \
     CMD python -c "print('healthy')" || exit 1
 
 # Default command - run scheduler daemon
-CMD ["python", "main.py"]
+# -u flag for unbuffered output (logs appear immediately)
+CMD ["python", "-u", "main.py"]
