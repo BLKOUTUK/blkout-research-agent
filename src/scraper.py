@@ -78,12 +78,19 @@ class ScraperAgent:
 
         page = await self.browser.new_page()
         try:
-            await page.goto(url, timeout=self.timeout, wait_until="networkidle")
+            await page.goto(url, timeout=self.timeout, wait_until="domcontentloaded")
 
-            # Wait for events to load
-            await page.wait_for_selector(".event-card, .search-result", timeout=10000)
+            # Wait for page to fully load and JS to render
+            await asyncio.sleep(3)
 
-            # Extract event links
+            # Wait for events to load - use actual OutSavvy selectors with fallbacks
+            try:
+                await page.wait_for_selector("article, a[href*='/event/']", timeout=30000)
+            except Exception as e:
+                print(f"OutSavvy: No events loaded after 30s: {e}")
+                return events
+
+            # Extract event links using actual selector that works
             event_links = await page.eval_on_selector_all(
                 "a[href*='/event/']",
                 "elements => elements.map(e => e.href)"
@@ -91,6 +98,7 @@ class ScraperAgent:
 
             # Deduplicate and limit
             unique_links = list(set(event_links))[:20]
+            print(f"OutSavvy: Found {len(unique_links)} unique event links")
 
             for link in unique_links:
                 try:
@@ -99,9 +107,11 @@ class ScraperAgent:
                         events.append(event)
                 except Exception as e:
                     print(f"Error scraping {link}: {e}")
+                    continue  # Skip failed events, don't crash entire scrape
 
         except Exception as e:
             print(f"OutSavvy scrape error: {e}")
+            # Don't raise - return partial results
         finally:
             await page.close()
 
@@ -109,14 +119,53 @@ class ScraperAgent:
 
     async def _scrape_outsavvy_event(self, page: Page, url: str) -> Optional[ScrapedEvent]:
         """Scrape individual OutSavvy event page"""
-        await page.goto(url, timeout=self.timeout, wait_until="networkidle")
-
         try:
-            title = await page.text_content("h1") or ""
-            date_elem = await page.text_content(".event-date, .date-time") or ""
-            venue = await page.text_content(".venue-name, .location") or ""
-            price = await page.text_content(".price, .ticket-price") or ""
-            description = await page.text_content(".event-description, .description") or ""
+            await page.goto(url, timeout=self.timeout, wait_until="domcontentloaded")
+            await asyncio.sleep(2)  # Allow JS to render
+
+            # Title - OutSavvy uses h1 tags
+            title = ""
+            if await page.locator("h1").count() > 0:
+                title = await page.locator("h1").first.text_content() or ""
+
+            # Date/Time - OutSavvy uses classes with "time" or "Date"
+            date_elem = ""
+            date_selectors = ["[class*='time']", "[class*='Date']", "time", ".when"]
+            for selector in date_selectors:
+                if await page.locator(selector).count() > 0:
+                    date_elem = await page.locator(selector).first.text_content() or ""
+                    if date_elem.strip():
+                        break
+
+            # Venue - OutSavvy uses classes with "Venue" or "Location"
+            venue = ""
+            venue_selectors = ["[class*='Venue']", "[class*='Location']", ".where", ".venue"]
+            for selector in venue_selectors:
+                if await page.locator(selector).count() > 0:
+                    venue = await page.locator(selector).first.text_content() or ""
+                    if venue.strip():
+                        break
+
+            # Price - OutSavvy uses classes with "price"
+            price = ""
+            price_selectors = ["[class*='price']", ".price", ".ticket-price"]
+            for selector in price_selectors:
+                if await page.locator(selector).count() > 0:
+                    price = await page.locator(selector).first.text_content() or ""
+                    if price.strip():
+                        break
+
+            # Description - OutSavvy uses .event-description or classes with "Description"
+            description = ""
+            desc_selectors = [".event-description", "[class*='Description']", "[class*='about']", ".description"]
+            for selector in desc_selectors:
+                if await page.locator(selector).count() > 0:
+                    description = await page.locator(selector).first.text_content() or ""
+                    if description.strip() and len(description.strip()) > 20:
+                        break
+
+            if not title:
+                return None
 
             return ScrapedEvent(
                 name=title.strip(),
@@ -127,7 +176,8 @@ class ScraperAgent:
                 description=description.strip()[:500] if description else None,
                 source_platform="OutSavvy",
             )
-        except:
+        except Exception as e:
+            print(f"Error scraping event page {url}: {e}")
             return None
 
     async def scrape_eventbrite(self, search_query: str = "Black-queer") -> List[ScrapedEvent]:
@@ -215,24 +265,42 @@ class ScraperAgent:
         return events
 
     async def scrape_all_platforms(self) -> List[ScrapedEvent]:
-        """Scrape all configured event platforms"""
+        """Scrape all configured event platforms with error isolation"""
         all_events = []
 
-        # OutSavvy searches
+        # OutSavvy searches - isolated error handling
+        print("\n=== Scraping OutSavvy ===")
         for query in ["Black LGBTQ", "QTIPOC", "queer POC"]:
-            events = await self.scrape_outsavvy(query)
-            all_events.extend(events)
+            try:
+                events = await self.scrape_outsavvy(query)
+                all_events.extend(events)
+                print(f"OutSavvy '{query}': {len(events)} events found")
+            except Exception as e:
+                print(f"OutSavvy '{query}' failed: {e}")
+                # Continue to next platform - don't crash entire discovery
             await asyncio.sleep(2)  # Rate limiting
 
-        # Eventbrite searches
+        # Eventbrite searches - isolated error handling
+        print("\n=== Scraping Eventbrite ===")
         for query in ["Black-queer", "QTIPOC", "Black-LGBTQ"]:
-            events = await self.scrape_eventbrite(query)
-            all_events.extend(events)
+            try:
+                events = await self.scrape_eventbrite(query)
+                all_events.extend(events)
+                print(f"Eventbrite '{query}': {len(events)} events found")
+            except Exception as e:
+                print(f"Eventbrite '{query}' failed: {e}")
+                # Continue to next platform
             await asyncio.sleep(2)
 
-        # Moonlight
-        events = await self.scrape_moonlight()
-        all_events.extend(events)
+        # Moonlight - isolated error handling
+        print("\n=== Scraping Moonlight ===")
+        try:
+            events = await self.scrape_moonlight()
+            all_events.extend(events)
+            print(f"Moonlight: {len(events)} events found")
+        except Exception as e:
+            print(f"Moonlight failed: {e}")
+            # Continue anyway
 
         # Deduplicate by URL hash
         seen = set()
@@ -242,4 +310,5 @@ class ScraperAgent:
                 seen.add(event.url_hash)
                 unique_events.append(event)
 
+        print(f"\n=== Total unique events: {len(unique_events)} ===")
         return unique_events

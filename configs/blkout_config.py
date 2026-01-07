@@ -75,22 +75,26 @@ news_search_queries = [
 ]
 
 events_search_queries = [
-    # Direct event searches
-    "Black LGBTQ events London",
-    "QTIPOC parties UK",
-    "Black queer events Manchester",
-    "Black Pride events UK",
+    # Direct event searches with explicit event keywords
+    "Black LGBTQ events London -wiki -game",
+    "QTIPOC parties UK events -wikipedia",
+    "Black queer events Manchester UK -wiki",
+    "Black Pride events UK 2026 -musician",
 
-    # Platform-specific
+    # Platform-specific (trusted sources only)
     "site:outsavvy.com Black LGBTQ",
     "site:eventbrite.co.uk Black queer",
-    "site:moonlightexperiences.com",
+    "site:moonlightexperiences.com black LGBTQ",
+    "site:londonlgbtqcentre.org events",
 
-    # Venue/organizer searches
-    "BBZ London events",
-    "Misery QTIPOC",
-    "Hungama queer",
-    "Pxssy Palace",
+    # Venue/organizer searches with context
+    "BBZ London queer party events",
+    "Hungama London music event LGBTQ",
+    "Pxssy Palace London LGBTQ event",
+
+    # Additional targeted searches
+    "Black LGBTQ community gathering UK",
+    "QTIPOC nightlife Manchester London Bristol",
 ]
 
 # =============================================================================
@@ -177,8 +181,87 @@ uk_keywords = [
     "bristol", "leeds", "glasgow", "edinburgh", "cardiff",
 ]
 
+# NEGATIVE keywords that indicate IRRELEVANT content (should exclude)
+negative_keywords = [
+    # Entertainment/celebrity
+    "musician", "band", "rapper", "singer", "artist", "actor", "actress",
+    "movie", "film", "tv show", "television", "netflix", "bbc drama",
+    "netflix series", "imdb", "rotten tomatoes",
+
+    # Gaming
+    "game", "video game", "gaming", "esports", "twitch", "steam",
+    "playstation", "xbox", "character", "gameplay",
+
+    # Generic/non-UK
+    "usa", "america", "us pride", "american", "california", "new york",
+
+    # Non-event content
+    "wikipedia", "wiki", "wikia", "encyclopedia", "reddit",
+    "tutorial", "how-to", "guide", "tips", "tricks",
+
+    # Corporate non-community
+    "corporate pride", "company announcement", "marketing",
+]
+
+# Domain BLACKLIST - explicitly reject sources
+domain_blacklist = [
+    "wikipedia.org", "en.wikipedia.org",
+    "reddit.com", "www.reddit.com",
+    "imdb.com", "www.imdb.com",
+    "rottentomatoes.com",
+    "steam.powered.com",
+    "metacritic.com",
+    "fandom.com",
+    "wiki.fandom.com",
+    "gamepedia.com",
+    "twitch.tv",
+]
+
+# Domain WHITELIST - trusted sources for news/events
+domain_whitelist = [
+    # News organizations (UK-focused)
+    "bbc.co.uk", "bbc.com",
+    "theguardian.com",
+    "independent.co.uk",
+    "itv.com",
+    "channel4.com",
+
+    # LGBTQ+ media
+    "pinknews.co.uk",
+    "attitude.co.uk",
+    "gaytimes.co.uk",
+    "thepinkcompass.com",
+
+    # Community/event platforms
+    "outsavvy.com",
+    "eventbrite.co.uk",
+    "moonlightexperiences.com",
+    "londonlgbtqcentre.org",
+    "designmynight.com",
+    "eventim.co.uk",
+    "ticketmaster.co.uk",
+
+    # Community organizations
+    "*.org.uk",
+    "black-pride.org",
+    "blackout.lgbt",
+    "blkout.com",
+    "stonewall.org.uk",
+    "mermaids.org.uk",
+
+    # Social platforms (for community announcements)
+    "instagram.com",
+    "facebook.com",
+    "twitter.com",
+    "x.com",
+]
+
 # Minimum relevance score to include content (0-100)
-relevance_threshold = 70
+# Raised from 70 to be stricter on intersectional requirements
+relevance_threshold = 75
+
+# Event-specific thresholds (even stricter)
+event_relevance_threshold = 80
 
 # =============================================================================
 # OUTPUT CONFIGURATION

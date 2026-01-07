@@ -22,7 +22,11 @@ from configs.blkout_config import (
     black_keywords,
     lgbtq_keywords,
     uk_keywords,
+    negative_keywords,
+    domain_blacklist,
+    domain_whitelist,
     relevance_threshold,
+    event_relevance_threshold,
 )
 
 
@@ -62,25 +66,87 @@ class NewsResearchAgent:
         self.search = SearchAgent(max_results=10)
         self.db = get_database()
 
-    def _quick_relevance_check(self, text: str) -> int:
-        """Fast keyword-based relevance check before LLM analysis"""
+    def _is_domain_acceptable(self, url: str) -> bool:
+        """Check if domain is acceptable for news/events content"""
+        url_lower = url.lower()
+        domain = self._extract_domain(url_lower)
+
+        # REJECT blacklisted domains
+        for blacklisted in domain_blacklist:
+            if blacklisted in domain:
+                return False
+
+        # WHITELIST sources (preferred)
+        for whitelisted in domain_whitelist:
+            whitelisted_clean = whitelisted.replace("*.", "")
+            if whitelisted_clean in domain or domain.endswith(whitelisted_clean):
+                return True
+
+        # Accept other sources IF they pass keyword checks (less preferred)
+        # This allows legitimate news sources not in whitelist
+        return True
+
+    def _extract_domain(self, url: str) -> str:
+        """Extract domain from URL"""
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            domain = parsed.netloc.replace("www.", "").lower()
+            return domain
+        except:
+            return ""
+
+    def _quick_relevance_check(self, text: str, url: str = "") -> int:
+        """Fast keyword-based relevance check before LLM analysis
+
+        Returns:
+            -1: Rejected (domain blacklist, negative keywords)
+            0-45: Too low relevance
+            46-74: Borderline (needs LLM review)
+            75+: High confidence match
+        """
         text_lower = text.lower()
 
-        # Check for high-relevance intersectional terms
+        # FIRST: Domain-based rejection
+        if url and not self._is_domain_acceptable(url):
+            return -1  # Signal rejection
+
+        # SECOND: Negative keywords (should exclude)
+        for neg_term in negative_keywords:
+            if neg_term in text_lower:
+                # Unless overridden by high-relevance keywords
+                has_high_relevance = any(
+                    term in text_lower for term in high_relevance_keywords
+                )
+                if not has_high_relevance:
+                    return 15  # Very low, likely false positive
+
+        # Check for high-relevance intersectional terms (strongest signal)
         for term in high_relevance_keywords:
             if term in text_lower:
-                return 95
+                return 95  # Definitely relevant
 
-        # Check for Black + LGBTQ+ combination
+        # Check for Black + LGBTQ+ combination (must have BOTH + UK)
         has_black = any(kw in text_lower for kw in black_keywords)
         has_lgbtq = any(kw in text_lower for kw in lgbtq_keywords)
         has_uk = any(kw in text_lower for kw in uk_keywords)
 
+        # Require UK location for news (high confidence)
+        if has_black and has_lgbtq and has_uk:
+            return 85  # Strong match
+
+        # Single keywords alone are insufficient (changed from 75/40)
         if has_black and has_lgbtq:
-            return 85 if has_uk else 75
+            # Without UK, needs deeper analysis
+            return 60  # Borderline (was 75 - too lenient)
+        elif (has_black or has_lgbtq) and has_uk:
+            # One keyword + UK location
+            return 50  # Borderline (was 40)
         elif has_black or has_lgbtq:
-            return 40  # Needs further analysis
-        return 20
+            # Single keyword only
+            return 25  # Low (was 40 - too lenient)
+
+        return 10  # No relevant keywords
 
     async def research(self, time_range: str = "w") -> List[DiscoveredArticle]:
         """Execute news research across all configured queries"""
@@ -94,15 +160,24 @@ class NewsResearchAgent:
         )
         print(f"[NewsAgent] Found {len(all_results)} raw results")
 
-        # Phase 2: Quick filter
+        # Phase 2: Quick filter with domain and keyword validation
         candidates = []
+        rejected = []
         for result in all_results:
             combined_text = f"{result.title} {result.snippet}"
-            quick_score = self._quick_relevance_check(combined_text)
-            if quick_score >= 40:  # Worth deeper analysis
+            quick_score = self._quick_relevance_check(combined_text, url=result.url)
+
+            if quick_score == -1:
+                # Domain rejection
+                rejected.append((result, "domain_blacklist"))
+            elif quick_score >= 45:  # Significantly stricter than before (was 40)
+                # Worth deeper analysis
                 candidates.append((result, quick_score))
+            else:
+                rejected.append((result, f"low_score_{quick_score}"))
 
         print(f"[NewsAgent] {len(candidates)} candidates passed quick filter")
+        print(f"[NewsAgent] {len(rejected)} results rejected (domain/keywords)")
 
         # Phase 3: LLM relevance analysis for borderline cases
         discovered = []
@@ -197,6 +272,67 @@ class EventsDiscoveryAgent:
         self.search = EventSearchAgent(max_results=15)
         self.db = get_database()
 
+    def _is_domain_acceptable(self, url: str) -> bool:
+        """Check if domain is acceptable for events content"""
+        url_lower = url.lower()
+        domain = self._extract_domain(url_lower)
+
+        # REJECT blacklisted domains (no Wikipedia, gaming, etc)
+        for blacklisted in domain_blacklist:
+            if blacklisted in domain:
+                return False
+
+        # WHITELIST event platforms (strongly preferred)
+        event_whitelist = ["outsavvy", "eventbrite", "moonlight", "londonlgbtq",
+                          "designmynight", "eventim", "ticketmaster"]
+        for whitelisted in event_whitelist:
+            if whitelisted in domain:
+                return True
+
+        # Accept social platforms (Instagram, Facebook for announcements)
+        social = ["instagram", "facebook", "twitter", "x.com"]
+        for soc in social:
+            if soc in domain:
+                return True
+
+        return True  # Other sources OK if they pass keyword checks
+
+    def _extract_domain(self, url: str) -> str:
+        """Extract domain from URL"""
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            domain = parsed.netloc.replace("www.", "").lower()
+            return domain
+        except:
+            return ""
+
+    def _is_likely_event(self, text: str) -> bool:
+        """Check if content appears to be an actual event"""
+        text_lower = text.lower()
+
+        # Negative indicators (NOT an event)
+        non_event_terms = [
+            "musician", "band", "game", "character",
+            "tv show", "movie", "film", "wikipedia",
+            "tutorial", "guide", "tips", "tricks",
+        ]
+        for term in non_event_terms:
+            if term in text_lower:
+                # Unless it has clear event indicators
+                event_terms = ["event", "party", "night", "club", "gather",
+                              "show", "performance", "live", "date:"]
+                if not any(et in text_lower for et in event_terms):
+                    return False
+
+        # Positive indicators (IS an event)
+        event_terms = [
+            "event", "party", "night", "club", "gathering", "gathering",
+            "show", "performance", "live", "happening", "gig",
+            "club night", "celebration", "festival", "pride",
+        ]
+        return any(term in text_lower for term in event_terms)
+
     async def discover_from_search(self) -> List[DiscoveredEvent]:
         """Discover events via web search"""
         print("[EventsAgent] Searching for QTIPOC events...")
@@ -205,22 +341,57 @@ class EventsDiscoveryAgent:
         print(f"[EventsAgent] Found {len(results)} search results")
 
         events = []
+        rejected = []
+
         for result in results:
+            combined_text = f"{result.title} {result.snippet}"
+
+            # Filter 1: Domain validation
+            if not self._is_domain_acceptable(result.url):
+                rejected.append((result, "domain_blacklist"))
+                continue
+
+            # Filter 2: Check if it's actually an event (not a band/musician/game)
+            if not self._is_likely_event(combined_text):
+                rejected.append((result, "not_event"))
+                continue
+
+            # Filter 3: Must contain relevant keywords
+            text_lower = combined_text.lower()
+            has_black = any(kw in text_lower for kw in black_keywords)
+            has_lgbtq = any(kw in text_lower for kw in lgbtq_keywords)
+            has_uk = any(kw in text_lower for kw in uk_keywords)
+
+            # Events need stronger relevance (both Black AND LGBTQ+)
+            if not (has_black and has_lgbtq):
+                rejected.append((result, "weak_keywords"))
+                continue
+
             # Extract date from title, snippet, or URL using LLM
             extracted_date = await self._extract_date_from_text(
                 f"Title: {result.title}\nURL: {result.url}\nSnippet: {result.snippet}"
             )
+
+            # Determine relevance score based on filters passed
+            if any(kw in text_lower for kw in high_relevance_keywords):
+                relevance = 95
+            elif has_black and has_lgbtq and has_uk:
+                relevance = 85
+            else:
+                relevance = 75
 
             # Extract basic event info
             events.append(DiscoveredEvent(
                 name=result.title,
                 url=result.url,
                 description=result.snippet,
-                date=extracted_date,  # Now includes parsed date!
+                date=extracted_date,
                 source_platform="Web Search",
-                relevance_score=80,  # Search results are pre-filtered by query
+                relevance_score=relevance,
             ))
 
+        print(f"[EventsAgent] {len(events)} events passed filters")
+        print(f"[EventsAgent] {len(rejected)} results rejected")
         return events
 
     async def _extract_date_from_text(self, text: str) -> Optional[str]:
