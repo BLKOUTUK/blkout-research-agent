@@ -88,6 +88,13 @@ class DatabaseClient:
 
     async def insert_event(self, event: Dict[str, Any]) -> Optional[str]:
         """Insert a new event"""
+
+        # CRITICAL: Skip events without valid date (database constraint)
+        event_date = event.get("date") or event.get("start_date")
+        if not event_date:
+            print(f"[DB] Skipping event without date: {event.get('name', 'Unknown')[:50]}")
+            return None
+
         url_hash = self._generate_hash(event.get("url", ""))
 
         # Check for duplicate
@@ -113,7 +120,7 @@ class DatabaseClient:
             "description": event.get("description", ""),
             "url": event.get("url", ""),
             "location": location,  # Combined address/venue/city
-            "date": event.get("date"),  # Event date
+            "date": event_date,  # Required field - validated above
             "start_time": event.get("start_time"),
             "end_time": event.get("end_time"),
             "end_date": event.get("end_date"),
