@@ -94,27 +94,36 @@ class DatabaseClient:
         if await self.event_exists(event.get("url", "")):
             return None
 
+        # Map to actual events table schema (no 'address', 'venue', 'city' columns)
+        # Combine address info into location field
+        location_parts = []
+        if event.get("venue"):
+            location_parts.append(event.get("venue"))
+        if event.get("address"):
+            location_parts.append(event.get("address"))
+        if event.get("city"):
+            location_parts.append(event.get("city"))
+
+        location = ", ".join(location_parts) if location_parts else "Location TBA"
+
         data = {
-            "name": event.get("name", "")[:500],
+            "title": event.get("name", "")[:500],
             "description": event.get("description", ""),
             "url": event.get("url", ""),
-            "venue": event.get("venue"),
-            "address": event.get("address"),
-            "city": event.get("city"),
-            "start_date": event.get("date"),
+            "location": location,  # Combined address/venue/city
+            "date": event.get("date"),  # Maps to 'date' column
+            "start_time": event.get("start_time"),
+            "end_time": event.get("end_time"),
             "end_date": event.get("end_date"),
-            "price": event.get("price"),
+            "cost": event.get("price"),
             "organizer": event.get("organizer"),
-            "event_type": event.get("event_type", "community"),
+            "source": event.get("source_platform", "research_agent"),
             "image_url": event.get("image_url"),
-            "source_platform": event.get("source_platform"),
+            "tags": event.get("tags", []),
+            "status": "draft",  # Goes to moderation queue
             "url_hash": url_hash,
             "relevance_score": min(100, event.get("relevance_score", 50)),
-            "status": "review",
-            "published": False,
-            "tags": event.get("tags", []),
             "discovery_method": "research_agent",
-            "discovered_at": datetime.utcnow().isoformat(),
         }
 
         result = self.client.table("events").insert(data).execute()

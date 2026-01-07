@@ -34,15 +34,16 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright browser
-RUN playwright install chromium
-
-# Copy application code
+# Copy application code (needed before playwright install)
 COPY . .
 
-# Create non-root user
+# Create non-root user BEFORE playwright install
 RUN useradd -m -u 1000 blkout && chown -R blkout:blkout /app
 USER blkout
+
+# Install Playwright browser as non-root user
+# This ensures browser installs to correct user home directory
+RUN playwright install chromium
 
 # Health check
 HEALTHCHECK --interval=60s --timeout=10s --start-period=30s \
