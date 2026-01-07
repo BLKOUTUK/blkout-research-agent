@@ -99,6 +99,10 @@ async def run_daemon():
 
 
 def main():
+    print("=" * 60)
+    print("BLKOUT Research Agent Starting...")
+    print("=" * 60)
+
     parser = argparse.ArgumentParser(description="BLKOUT Research Agent")
     parser.add_argument(
         "--run-now",
@@ -112,18 +116,31 @@ def main():
     )
 
     args = parser.parse_args()
+    print(f"[Main] Mode: {'test' if args.test else 'run_now: ' + args.run_now if args.run_now else 'daemon'}")
 
     # Check configuration
     if not args.test and not check_config():
+        print("[Main] Configuration check failed")
         return 1
 
+    print("[Main] Configuration OK")
+
     # Run appropriate mode
-    if args.test:
-        asyncio.run(run_test())
-    elif args.run_now:
-        asyncio.run(run_immediate(args.run_now))
-    else:
-        asyncio.run(run_daemon())
+    try:
+        if args.test:
+            print("[Main] Starting test mode...")
+            asyncio.run(run_test())
+        elif args.run_now:
+            print(f"[Main] Running immediate job: {args.run_now}")
+            asyncio.run(run_immediate(args.run_now))
+        else:
+            print("[Main] Starting daemon mode...")
+            asyncio.run(run_daemon())
+    except Exception as e:
+        print(f"[Main] FATAL ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
 
     return 0
 
