@@ -95,6 +95,27 @@ class DatabaseClient:
             print(f"[DB] Skipping event without date: {event.get('name', 'Unknown')[:50]}")
             return None
 
+        # Validate date format - reject placeholder text
+        event_date_str = str(event_date).strip()
+        if not event_date_str or len(event_date_str) < 10:
+            print(f"[DB] Skipping event with invalid date '{event_date_str}': {event.get('name', 'Unknown')[:50]}")
+            return None
+
+        # Reject placeholder/invalid date strings
+        invalid_dates = ["select", "tba", "tbd", "coming soon", "date not set"]
+        if any(invalid in event_date_str.lower() for invalid in invalid_dates):
+            print(f"[DB] Skipping event with placeholder date '{event_date_str}': {event.get('name', 'Unknown')[:50]}")
+            return None
+
+        # Validate ISO-like format (YYYY-MM-DD)
+        try:
+            from datetime import datetime
+            # Try parsing as ISO date
+            datetime.fromisoformat(event_date_str.split('T')[0])
+        except (ValueError, AttributeError):
+            print(f"[DB] Skipping event with unparseable date '{event_date_str}': {event.get('name', 'Unknown')[:50]}")
+            return None
+
         url_hash = self._generate_hash(event.get("url", ""))
 
         # Check for duplicate
