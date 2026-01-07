@@ -94,7 +94,9 @@ class DatabaseClient:
         if await self.event_exists(event.get("url", "")):
             return None
 
-        # Map to actual events table schema (no 'address', 'venue', 'city' columns)
+        # Map to actual events table schema
+        # Actual columns: id, title, date, description, location, virtual_link, organizer,
+        #                 source, tags, url, cost, start_time, end_time, end_date, status
         # Combine address info into location field
         location_parts = []
         if event.get("venue"):
@@ -111,19 +113,17 @@ class DatabaseClient:
             "description": event.get("description", ""),
             "url": event.get("url", ""),
             "location": location,  # Combined address/venue/city
-            "date": event.get("date"),  # Maps to 'date' column
+            "date": event.get("date"),  # Event date
             "start_time": event.get("start_time"),
             "end_time": event.get("end_time"),
             "end_date": event.get("end_date"),
             "cost": event.get("price"),
             "organizer": event.get("organizer"),
             "source": event.get("source_platform", "research_agent"),
-            "image_url": event.get("image_url"),
             "tags": event.get("tags", []),
             "status": "draft",  # Goes to moderation queue
-            "url_hash": url_hash,
-            "relevance_score": min(100, event.get("relevance_score", 50)),
-            "discovery_method": "research_agent",
+            # Note: url_hash, image_url, relevance_score, discovery_method columns don't exist
+            # These features need to be added via database migration if needed
         }
 
         result = self.client.table("events").insert(data).execute()
