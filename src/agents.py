@@ -206,16 +206,51 @@ class EventsDiscoveryAgent:
 
         events = []
         for result in results:
+            # Extract date from title, snippet, or URL using LLM
+            extracted_date = await self._extract_date_from_text(
+                f"Title: {result.title}\nURL: {result.url}\nSnippet: {result.snippet}"
+            )
+
             # Extract basic event info
             events.append(DiscoveredEvent(
                 name=result.title,
                 url=result.url,
                 description=result.snippet,
+                date=extracted_date,  # Now includes parsed date!
                 source_platform="Web Search",
                 relevance_score=80,  # Search results are pre-filtered by query
             ))
 
         return events
+
+    async def _extract_date_from_text(self, text: str) -> Optional[str]:
+        """Extract event date from text using LLM"""
+        try:
+            prompt = f"""Extract the event date from this text. Return ONLY the date in ISO format (YYYY-MM-DD) or "none" if no date found.
+
+Text: {text[:500]}
+
+Rules:
+- Look for dates in title, URL path, or snippet
+- Common patterns: "Jan 7", "7th January 2026", "/2026/01/07/", "Tue, 7 Jan"
+- If multiple dates, return the earliest future date
+- If no clear date, return "none"
+
+Date (YYYY-MM-DD or "none"):"""
+
+            response = await self.llm.complete(prompt, max_tokens=20)
+            date_str = response.strip().lower()
+
+            if date_str == "none" or not date_str:
+                return None
+
+            # Validate it looks like a date (YYYY-MM-DD format)
+            if len(date_str) == 10 and date_str[4] == '-' and date_str[7] == '-':
+                return date_str
+
+            return None
+        except Exception as e:
+            return None
 
     async def discover_from_scraping(self) -> List[DiscoveredEvent]:
         """Discover events by scraping platforms"""
