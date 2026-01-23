@@ -1,4 +1,5 @@
 # BLKOUT Research Agent - Docker Image for Coolify
+# Updated: 2026-01-23 - Category constraint fix
 FROM python:3.11-slim
 
 # Install system dependencies for Playwright
