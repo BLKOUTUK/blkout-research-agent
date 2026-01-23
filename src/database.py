@@ -149,7 +149,7 @@ class DatabaseClient:
             "organizer": event.get("organizer"),
             "source": event.get("source_platform", "research_agent"),
             "tags": event.get("tags", []),
-            "status": "pending",  # Goes to moderation queue (draft not allowed by constraint)
+            "status": "reviewing",  # Matches moderation UI filter (draft|reviewing)
             # Note: url_hash, image_url, relevance_score, discovery_method columns don't exist
             # These features need to be added via database migration if needed
         }
