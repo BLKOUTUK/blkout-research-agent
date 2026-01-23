@@ -49,7 +49,7 @@ class DatabaseClient:
             "author": article.get("author", ""),
             "published_at": article.get("published_date") or datetime.utcnow().isoformat(),
             "featured_image": article.get("image_url"),
-            "category": article.get("category", "news"),
+            "category": article.get("category", "community"),
             "interest_score": min(100, article.get("relevance_score", 50)),
             "url_hash": url_hash,
             "status": "review",  # Requires human review before publishing
@@ -183,7 +183,7 @@ class DatabaseClient:
     ) -> str:
         """Log a discovery run for monitoring"""
         data = {
-            "run_type": run_type,  # "news" | "events" | "deep_research"
+            "run_type": run_type,  # "news" | "events" | "deep_research" | "creators"
             "started_at": datetime.utcnow().isoformat(),
             "stats": stats,
             "errors": errors or [],
@@ -192,6 +192,87 @@ class DatabaseClient:
 
         result = self.client.table("discovery_logs").insert(data).execute()
         return result.data[0]["id"] if result.data else None
+
+    # =========================================================================
+    # CREATORS (The Channel integration)
+    # =========================================================================
+
+    async def creator_exists(
+        self,
+        youtube_handle: Optional[str] = None,
+        instagram_handle: Optional[str] = None,
+        tiktok_handle: Optional[str] = None,
+        twitter_handle: Optional[str] = None
+    ) -> bool:
+        """Check if creator already exists by handles"""
+        try:
+            # Build OR query for any matching handle
+            query = self.client.table("channel_creators").select("id")
+
+            if youtube_handle:
+                query = query.or_(f"youtube_handle.eq.{youtube_handle}")
+            if instagram_handle:
+                query = query.or_(f"instagram_handle.eq.{instagram_handle}")
+            if tiktok_handle:
+                query = query.or_(f"tiktok_handle.eq.{tiktok_handle}")
+            if twitter_handle:
+                query = query.or_(f"twitter_handle.eq.{twitter_handle}")
+
+            result = query.limit(1).execute()
+            return len(result.data) > 0
+
+        except Exception as e:
+            print(f"[DB] Creator existence check failed: {e}")
+            return False
+
+    async def insert_creator(self, creator: Dict[str, Any]) -> Optional[str]:
+        """Insert a new creator"""
+
+        # Check for duplicate
+        exists = await self.creator_exists(
+            youtube_handle=creator.get("youtube_handle"),
+            instagram_handle=creator.get("instagram_handle"),
+            tiktok_handle=creator.get("tiktok_handle"),
+            twitter_handle=creator.get("twitter_handle")
+        )
+
+        if exists:
+            return None
+
+        data = {
+            "creator_name": creator.get("creator_name", "")[:255],
+            "location": creator.get("location") or "London",  # Ensure never null
+            "primary_platform": creator.get("primary_platform", "instagram"),
+            "youtube_handle": creator.get("youtube_handle"),
+            "instagram_handle": creator.get("instagram_handle"),
+            "tiktok_handle": creator.get("tiktok_handle"),
+            "twitter_handle": creator.get("twitter_handle"),
+            "website_url": creator.get("website_url"),
+            "bio": creator.get("bio", "")[:1000],
+            "content_themes": creator.get("content_themes", []),
+            "pronouns": creator.get("pronouns"),
+            "consent_status": "pending",  # Always starts as pending
+            "discovery_notes": creator.get("discovery_notes", ""),
+            "discovered_by": creator.get("discovered_by", "automated_discovery"),
+            "discovery_date": datetime.utcnow().isoformat(),
+        }
+
+        result = self.client.table("channel_creators").insert(data).execute()
+        return result.data[0]["id"] if result.data else None
+
+    async def insert_creators_batch(self, creators: List[Dict[str, Any]]) -> Dict[str, int]:
+        """Insert multiple creators, skipping duplicates"""
+        inserted = 0
+        skipped = 0
+
+        for creator in creators:
+            result = await self.insert_creator(creator)
+            if result:
+                inserted += 1
+            else:
+                skipped += 1
+
+        return {"inserted": inserted, "skipped": skipped}
 
 
 # Singleton
