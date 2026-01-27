@@ -75,26 +75,32 @@ news_search_queries = [
 ]
 
 events_search_queries = [
-    # Direct event searches with explicit event keywords
-    "Black LGBTQ events London -wiki -game",
-    "QTIPOC parties UK events -wikipedia",
-    "Black queer events Manchester UK -wiki",
-    "Black Pride events UK 2026 -musician",
+    # Direct event searches with 2026 year targeting
+    "Black LGBTQ events London 2026",
+    "QTIPOC parties UK 2026 upcoming",
+    "Black queer events Manchester 2026",
+    "UK Black Pride 2026 event",
+    "Black gay events London February 2026",
+    "QTIPOC events UK January February March 2026",
 
-    # Platform-specific (trusted sources only)
-    "site:outsavvy.com Black LGBTQ",
-    "site:eventbrite.co.uk Black queer",
-    "site:moonlightexperiences.com black LGBTQ",
-    "site:londonlgbtqcentre.org events",
+    # Platform-specific (trusted sources with year)
+    "site:outsavvy.com Black LGBTQ 2026",
+    "site:eventbrite.co.uk Black queer London 2026",
+    "site:eventbrite.co.uk QTIPOC 2026",
+    "site:moonlightexperiences.com upcoming events",
+    "site:londonlgbtqcentre.org events 2026",
 
-    # Venue/organizer searches with context
-    "BBZ London queer party events",
-    "Hungama London music event LGBTQ",
-    "Pxssy Palace London LGBTQ event",
+    # Venue/organizer searches with upcoming context
+    "BBZ London queer party 2026 upcoming",
+    "Hungama London 2026 event",
+    "Pxssy Palace London 2026",
+    "Dalston Superstore queer events 2026",
 
-    # Additional targeted searches
-    "Black LGBTQ community gathering UK",
-    "QTIPOC nightlife Manchester London Bristol",
+    # Community events with future focus
+    "Black LGBTQ community gathering UK 2026 upcoming",
+    "QTIPOC nightlife London 2026",
+    "Black queer club night London upcoming",
+    "UK Black Pride summer 2026",
 ]
 
 # =============================================================================

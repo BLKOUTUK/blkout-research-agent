@@ -12,6 +12,69 @@ import re
 from playwright.async_api import async_playwright, Browser, Page
 
 
+def parse_date_to_iso(date_str: str) -> Optional[str]:
+    """Parse various date formats to ISO format YYYY-MM-DD"""
+    if not date_str:
+        return None
+
+    date_str = date_str.strip()
+
+    # Already ISO format
+    if re.match(r'^\d{4}-\d{2}-\d{2}', date_str):
+        return date_str.split('T')[0]
+
+    # Month name mappings
+    months = {
+        'jan': '01', 'january': '01', 'feb': '02', 'february': '02',
+        'mar': '03', 'march': '03', 'apr': '04', 'april': '04',
+        'may': '05', 'jun': '06', 'june': '06', 'jul': '07', 'july': '07',
+        'aug': '08', 'august': '08', 'sep': '09', 'september': '09',
+        'oct': '10', 'october': '10', 'nov': '11', 'november': '11',
+        'dec': '12', 'december': '12'
+    }
+
+    # Try "25 January 2026" or "25 Jan 2026"
+    match = re.search(r'(\d{1,2})\s+([A-Za-z]+)\s+(202\d)', date_str)
+    if match:
+        day = match.group(1).zfill(2)
+        month_name = match.group(2).lower()
+        year = match.group(3)
+        month = months.get(month_name[:3])
+        if month:
+            return f"{year}-{month}-{day}"
+
+    # Try "January 25, 2026" or "Jan 25 2026"
+    match = re.search(r'([A-Za-z]+)\s+(\d{1,2}),?\s+(202\d)', date_str)
+    if match:
+        month_name = match.group(1).lower()
+        day = match.group(2).zfill(2)
+        year = match.group(3)
+        month = months.get(month_name[:3])
+        if month:
+            return f"{year}-{month}-{day}"
+
+    # Try "Sat 25 Jan 2026" or "Saturday 25 January 2026"
+    match = re.search(r'(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*\s+(\d{1,2})\s+([A-Za-z]+)\s*(202\d)?', date_str, re.IGNORECASE)
+    if match:
+        day = match.group(1).zfill(2)
+        month_name = match.group(2).lower()
+        year = match.group(3) or '2026'  # Default to 2026 if not specified
+        month = months.get(month_name[:3])
+        if month:
+            return f"{year}-{month}-{day}"
+
+    # Try "Sat, Jan 25" (no year - assume 2026)
+    match = re.search(r'(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*,?\s+([A-Za-z]+)\s+(\d{1,2})', date_str, re.IGNORECASE)
+    if match:
+        month_name = match.group(1).lower()
+        day = match.group(2).zfill(2)
+        month = months.get(month_name[:3])
+        if month:
+            return f"2026-{month}-{day}"
+
+    return None
+
+
 @dataclass
 class ScrapedEvent:
     name: str
@@ -119,6 +182,13 @@ class ScraperAgent:
 
     async def _scrape_outsavvy_event(self, page: Page, url: str) -> Optional[ScrapedEvent]:
         """Scrape individual OutSavvy event page"""
+        # Helper to check if text is a placeholder/invalid
+        def is_placeholder(text: str) -> bool:
+            if not text or len(text.strip()) < 5:
+                return True
+            invalid_phrases = ['select', 'choose', 'pick', 'filter', 'event time', 'tba', 'tbd']
+            return any(phrase in text.lower() for phrase in invalid_phrases)
+
         try:
             await page.goto(url, timeout=self.timeout, wait_until="domcontentloaded")
             await asyncio.sleep(2)  # Allow JS to render
@@ -128,14 +198,111 @@ class ScraperAgent:
             if await page.locator("h1").count() > 0:
                 title = await page.locator("h1").first.text_content() or ""
 
-            # Date/Time - OutSavvy uses classes with "time" or "Date"
+            # Date/Time - Multiple extraction strategies (prioritize regex as most reliable)
             date_elem = ""
-            date_selectors = ["[class*='time']", "[class*='Date']", "time", ".when"]
-            for selector in date_selectors:
-                if await page.locator(selector).count() > 0:
-                    date_elem = await page.locator(selector).first.text_content() or ""
-                    if date_elem.strip():
+
+            # Strategy 1: Extract date from page body using regex patterns (most reliable)
+            try:
+                body_text = await page.evaluate('() => document.body.innerText')
+                # Look for various date patterns including OutSavvy's "THURSDAY 12TH MARCH 2026" format
+                date_patterns = [
+                    # OutSavvy format: "THURSDAY 12TH MARCH 2026 AT 7:30 PM"
+                    r'\b(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s+(\d{1,2})(?:st|nd|rd|th)?\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(202[4-9])\b',
+                    # Standard: "25 January 2026"
+                    r'\b(\d{1,2})\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(202[4-9])\b',
+                    # Short day: "Sat 25 Jan 2026" or "Sat, 25 Jan 2026"
+                    r'\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*,?\s+(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(202[4-9])\b',
+                    # US format: "January 25, 2026"
+                    r'\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(202[4-9])\b',
+                    # ISO format: "2026-01-25"
+                    r'\b(202[4-9])-(\d{2})-(\d{2})\b'
+                ]
+
+                months = {
+                    'jan': '01', 'january': '01', 'feb': '02', 'february': '02',
+                    'mar': '03', 'march': '03', 'apr': '04', 'april': '04',
+                    'may': '05', 'jun': '06', 'june': '06', 'jul': '07', 'july': '07',
+                    'aug': '08', 'august': '08', 'sep': '09', 'september': '09',
+                    'oct': '10', 'october': '10', 'nov': '11', 'november': '11',
+                    'dec': '12', 'december': '12'
+                }
+
+                for i, pattern in enumerate(date_patterns):
+                    match = re.search(pattern, body_text, re.IGNORECASE)
+                    if match:
+                        groups = match.groups()
+                        if i == 0 or i == 1:  # "THURSDAY 12TH MARCH 2026" or "25 January 2026"
+                            day = groups[0].zfill(2)
+                            month = months.get(groups[1].lower()[:3], '01')
+                            year = groups[2]
+                            date_elem = f"{year}-{month}-{day}"
+                        elif i == 2:  # "Sat 25 Jan 2026"
+                            day = groups[0].zfill(2)
+                            month = months.get(groups[1].lower()[:3], '01')
+                            year = groups[2]
+                            date_elem = f"{year}-{month}-{day}"
+                        elif i == 3:  # "January 25, 2026"
+                            month = months.get(groups[0].lower()[:3], '01')
+                            day = groups[1].zfill(2)
+                            year = groups[2]
+                            date_elem = f"{year}-{month}-{day}"
+                        elif i == 4:  # "2026-01-25"
+                            date_elem = f"{groups[0]}-{groups[1]}-{groups[2]}"
                         break
+            except:
+                pass
+
+            # Strategy 2: Try to get date from JSON-LD structured data
+            if not date_elem:
+                try:
+                    json_ld = await page.evaluate('''() => {
+                        const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+                        for (const script of scripts) {
+                            try {
+                                const data = JSON.parse(script.textContent);
+                                if (data.startDate) return data.startDate;
+                                if (data['@graph']) {
+                                    for (const item of data['@graph']) {
+                                        if (item.startDate) return item.startDate;
+                                    }
+                                }
+                            } catch (e) {}
+                        }
+                        return null;
+                    }''')
+                    if json_ld and not is_placeholder(json_ld):
+                        date_elem = json_ld
+                except:
+                    pass
+
+            # Strategy 3: Try meta tags
+            if not date_elem:
+                try:
+                    meta_date = await page.evaluate('''() => {
+                        const meta = document.querySelector('meta[property="event:start_time"], meta[name="date"], meta[property="og:event:start_time"]');
+                        return meta ? meta.getAttribute('content') : null;
+                    }''')
+                    if meta_date and not is_placeholder(meta_date):
+                        date_elem = meta_date
+                except:
+                    pass
+
+            # Strategy 4: Look for visible date elements (excluding form inputs)
+            if not date_elem:
+                # Use more specific selectors and filter out form placeholders
+                date_selectors = [
+                    "[class*='EventDate']", "[class*='event-date']",
+                    "[class*='startDate']", "[class*='start-date']",
+                    "[data-testid*='date']", "time[datetime]",
+                    ".date-display", ".event-info time"
+                ]
+                for selector in date_selectors:
+                    if await page.locator(selector).count() > 0:
+                        text = await page.locator(selector).first.text_content() or ""
+                        # Filter out form placeholders
+                        if text.strip() and not is_placeholder(text):
+                            date_elem = text.strip()
+                            break
 
             # Venue - OutSavvy uses classes with "Venue" or "Location"
             venue = ""
@@ -167,11 +334,16 @@ class ScraperAgent:
             if not title:
                 return None
 
+            # Parse the date to ISO format
+            parsed_date = parse_date_to_iso(date_elem) if date_elem else None
+            if date_elem and not parsed_date:
+                print(f"Could not parse date '{date_elem}' for event: {title[:50]}")
+
             return ScrapedEvent(
                 name=title.strip(),
                 url=url,
                 venue=venue.strip() if venue else None,
-                date=date_elem.strip() if date_elem else None,
+                date=parsed_date,  # Use parsed ISO date
                 price=price.strip() if price else None,
                 description=description.strip()[:500] if description else None,
                 source_platform="OutSavvy",
@@ -210,11 +382,13 @@ class ScraperAgent:
                     venue = await venue_elem.text_content() if venue_elem else ""
 
                     if title and link:
+                        # Parse the date to ISO format
+                        parsed_date = parse_date_to_iso(date) if date else None
                         events.append(ScrapedEvent(
                             name=title.strip(),
                             url=link if link.startswith("http") else f"https://www.eventbrite.co.uk{link}",
                             venue=venue.strip() if venue else None,
-                            date=date.strip() if date else None,
+                            date=parsed_date,  # Use parsed ISO date
                             source_platform="Eventbrite",
                         ))
                 except Exception as e:

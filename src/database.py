@@ -107,11 +107,18 @@ class DatabaseClient:
             print(f"[DB] Skipping event with placeholder date '{event_date_str}': {event.get('name', 'Unknown')[:50]}")
             return None
 
-        # Validate ISO-like format (YYYY-MM-DD)
+        # Validate ISO-like format (YYYY-MM-DD) and ensure it's in the future
         try:
-            from datetime import datetime
+            from datetime import datetime, timedelta
             # Try parsing as ISO date
-            datetime.fromisoformat(event_date_str.split('T')[0])
+            event_datetime = datetime.fromisoformat(event_date_str.split('T')[0])
+
+            # Reject past events (allow events from yesterday to handle timezone edge cases)
+            yesterday = datetime.now() - timedelta(days=1)
+            if event_datetime < yesterday:
+                print(f"[DB] Skipping past event ({event_date_str}): {event.get('name', 'Unknown')[:50]}")
+                return None
+
         except (ValueError, AttributeError):
             print(f"[DB] Skipping event with unparseable date '{event_date_str}': {event.get('name', 'Unknown')[:50]}")
             return None
@@ -149,7 +156,7 @@ class DatabaseClient:
             "organizer": event.get("organizer"),
             "source": event.get("source_platform", "research_agent"),
             "tags": event.get("tags", []),
-            "status": "reviewing",  # Matches moderation UI filter (draft|reviewing)
+            "status": "pending",  # Goes to moderation queue (pending|reviewing|draft)
             # Note: url_hash, image_url, relevance_score, discovery_method columns don't exist
             # These features need to be added via database migration if needed
         }
