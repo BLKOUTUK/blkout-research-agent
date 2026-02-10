@@ -278,7 +278,7 @@ Respond in JSON format:
             "application_url": grant.url,
             "notes": grant.description,
             "deadline_date": grant.deadline,
-            "fit_score": grant.relevance_score,
+            "fit_score": grant.relevance_score / 100.0,  # DB constraint expects 0-1 range
             "funder_advice": grant.fit_reasoning,
             "geographic_scope": grant.geographic_scope,
             "tags": grant.tags or [],
@@ -355,7 +355,7 @@ class GrantPlanningAgent:
             response = self.db.client.table("grants")\
                 .select("title, funder_name, application_url, deadline_date, fit_score, funder_advice, priority, notes")\
                 .eq("status", "researching")\
-                .gte("fit_score", 60)\
+                .gte("fit_score", 0.60)\
                 .order("created_at", desc=True)\
                 .limit(20)\
                 .execute()

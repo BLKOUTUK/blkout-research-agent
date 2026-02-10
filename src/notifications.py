@@ -123,7 +123,7 @@ class EmailNotifier:
 """
             for grant in new_grants[:10]:  # Limit to 10
                 priority_class = "high" if grant.get("priority") == "high" else "medium" if grant.get("priority") == "medium" else ""
-                score = grant.get("fit_score", 0)
+                score = int(grant.get("fit_score", 0) * 100)  # DB stores 0-1, display as %
 
                 html += f"""
         <div class="grant {priority_class}">
@@ -146,7 +146,7 @@ class EmailNotifier:
 """
             for i, grant in enumerate(top_priority[:10], 1):
                 priority_class = "high" if grant.get("priority") == "high" else "medium"
-                score = grant.get("fit_score", 0)
+                score = int(grant.get("fit_score", 0) * 100)  # DB stores 0-1, display as %
                 deadline = grant.get("deadline_date")
                 deadline_text = f" &bull; <strong>Deadline: {deadline}</strong>" if deadline else ""
 
