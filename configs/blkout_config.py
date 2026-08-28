@@ -93,7 +93,6 @@ events_search_queries = [
     # Venue/organizer searches with upcoming context
     "BBZ London queer party 2026 upcoming",
     "Hungama London 2026 event",
-    "Pxssy Palace London 2026",
     "Dalston Superstore queer events 2026",
 
     # Community events with future focus
