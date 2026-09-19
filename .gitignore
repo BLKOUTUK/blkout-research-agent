@@ -16,3 +16,7 @@ data/
 # OS
 .DS_Store
 Thumbs.db
+
+# tool-metrics files (regenerated locally by claude-flow/ruv-swarm; ticket 08c)
+.claude-flow/metrics/
+.swarm/
