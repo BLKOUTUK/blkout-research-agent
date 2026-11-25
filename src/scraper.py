@@ -108,15 +108,30 @@ class ScraperAgent:
         self.headless = headless
         self.timeout = timeout
         self.browser: Optional[Browser] = None
+        self._playwright = None
 
     async def __aenter__(self):
-        playwright = await async_playwright().start()
-        self.browser = await playwright.chromium.launch(headless=self.headless)
+        self._playwright = await async_playwright().start()
+        try:
+            self.browser = await self._playwright.chromium.launch(headless=self.headless)
+        except Exception:
+            await self._playwright.stop()
+            self._playwright = None
+            raise
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if self.browser:
-            await self.browser.close()
+        # Stop the Playwright driver as well as the browser: closing only the
+        # browser left one ~65 MB Node driver process behind per run
+        # (61 of them, ~4 GB, on the VPS by 25 Nov 2026).
+        try:
+            if self.browser:
+                await self.browser.close()
+        finally:
+            self.browser = None
+            if self._playwright:
+                await self._playwright.stop()
+                self._playwright = None
 
     async def scrape_page(self, url: str) -> str:
         """Scrape raw HTML from a URL"""
